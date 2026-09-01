@@ -17,9 +17,13 @@ from retriever import find_ventilation_rule
 from requirement_extractor import extract_airflow_requirement
 from tfidf_retriever import search_tfidf
 
+from fastapi import FastAPI
+from database import engine, Base
+import models
 
 app = FastAPI(title="MineSafe API")
 
+Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,
