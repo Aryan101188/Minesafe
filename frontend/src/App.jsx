@@ -6,6 +6,8 @@ import {
 
 import "./App.css";
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || "";
+
 
 function App() {
 
@@ -49,7 +51,7 @@ function App() {
 
   useEffect(() => {
 
-    fetch("/api/documents")
+    fetch(`${API_BASE_URL}/api/documents`)
       .then((response) => response.json())
       .then((data) => {
         setDocuments(data);
@@ -62,7 +64,7 @@ function App() {
       });
 
 
-    fetch("/api/stats")
+    fetch(`${API_BASE_URL}/api/stats`)
       .then((response) => response.json())
       .then((data) => {
         setStats(data);
@@ -74,7 +76,7 @@ function App() {
         );
       });
 
-    fetch("/api/trash")
+    fetch(`${API_BASE_URL}/api/trash")
       .then((response) => response.json())
       .then((data) => {
         setTrashDocuments(Array.isArray(data) ? data : []);
@@ -169,7 +171,7 @@ function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || data.message || "Upload failed.");
+        throw new Error(data.detail || data.message || "Upload failed.`);
       }
 
       setUploadMessage(
@@ -178,8 +180,8 @@ function App() {
       setSelectedFile(null);
 
       const [documentsResponse, statsResponse] = await Promise.all([
-        fetch("/api/documents"),
-        fetch("/api/stats")
+        fetch(`${API_BASE_URL}/api/documents`),
+        fetch(`${API_BASE_URL}/api/stats`)
       ]);
 
       if (documentsResponse.ok) {
@@ -286,9 +288,9 @@ function App() {
 
       const [documentsResponse, trashResponse, statsResponse] =
         await Promise.all([
-          fetch("/api/documents"),
-          fetch("/api/trash"),
-          fetch("/api/stats")
+          fetch(`${API_BASE_URL}/api/documents`),
+          fetch(`${API_BASE_URL}/api/trash`),
+          fetch(`${API_BASE_URL}/api/stats`)
         ]);
 
       if (documentsResponse.ok) {
