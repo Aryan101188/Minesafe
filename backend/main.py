@@ -1,14 +1,12 @@
-import urllib.parse
-import urllib.request
-import json
-from pathlib import Path
-
 from sqlalchemy import text
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from database import engine
+from init_db import *
+
 from pdf_processor import save_document
 from incident_classifier import classify_incident
 from priority_engine import calculate_priority
@@ -17,13 +15,9 @@ from retriever import find_ventilation_rule
 from requirement_extractor import extract_airflow_requirement
 from tfidf_retriever import search_tfidf
 
-from fastapi import FastAPI
-from database import engine, Base
-import models
 
 app = FastAPI(title="MineSafe API")
 
-Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,
