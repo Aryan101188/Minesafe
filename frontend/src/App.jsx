@@ -6,7 +6,8 @@ import {
 
 import "./App.css";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "https://minesafe-backend-0j6w.onrender.com";
+
+const API_BASE = "http://127.0.0.1:8000";
 
 
 function App() {
@@ -17,10 +18,6 @@ function App() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
-  const [deletingDocumentId, setDeletingDocumentId] = useState(null);
-  const [trashDocuments, setTrashDocuments] = useState([]);
-  const [restoringDocumentId, setRestoringDocumentId] = useState(null);
-  const [permanentlyDeletingDocumentId, setPermanentlyDeletingDocumentId] = useState(null);
 
   const [stats, setStats] = useState({
     documents: 0,
@@ -35,11 +32,9 @@ function App() {
   const [showSupportingEvidence, setShowSupportingEvidence] = useState(false);
 
   const [actualAirflow, setActualAirflow] = useState("");
-
   const [complianceResult, setComplianceResult] = useState(null);
 
   const [incidentDescription, setIncidentDescription] = useState("");
-
   const [incidentResult, setIncidentResult] = useState(null);
 
   const searchInputRef = useRef(null);
@@ -49,50 +44,57 @@ function App() {
   // LOAD DOCUMENTS + STATS
   // =========================
 
+  const loadDocumentsAndStats = async () => {
+
+    try {
+
+      const [documentsResponse, statsResponse] =
+        await Promise.all([
+          fetch(`${API_BASE}/api/documents`),
+          fetch(`${API_BASE}/api/stats`)
+        ]);
+
+      if (documentsResponse.ok) {
+
+        const documentsData =
+          await documentsResponse.json();
+
+        setDocuments(
+          Array.isArray(documentsData)
+            ? documentsData
+            : []
+        );
+
+      }
+
+      if (statsResponse.ok) {
+
+        const statsData =
+          await statsResponse.json();
+
+        setStats(statsData);
+
+      }
+
+    } catch (error) {
+
+      console.error(
+        "Error loading documents and stats:",
+        error
+      );
+
+    }
+
+  };
+
+
   useEffect(() => {
-
-    fetch(`${API_BASE_URL}/api/documents`)
-      .then((response) => response.json())
-      .then((data) => {
-        setDocuments(data);
-      })
-      .catch((error) => {
-        console.error(
-          "Error fetching documents:",
-          error
-        );
-      });
-
-
-    fetch(`${API_BASE_URL}/api/stats`)
-      .then((response) => response.json())
-      .then((data) => {
-        setStats(data);
-      })
-      .catch((error) => {
-        console.error(
-          "Error fetching stats:",
-          error
-        );
-      });
-
-    fetch(`${API_BASE_URL}/api/trash`)
-      .then((response) => response.json())
-      .then((data) => {
-        setTrashDocuments(Array.isArray(data) ? data : []);
-      })
-      .catch((error) => {
-        console.error(
-          "Error fetching recycle bin:",
-          error
-        );
-      });
-
+    loadDocumentsAndStats();
   }, []);
 
 
   // =========================
-  // CTRL + K SEARCH SHORTCUT
+  // CTRL + K SEARCH
   // =========================
 
   useEffect(() => {
@@ -140,264 +142,133 @@ function App() {
   // =========================
 
   const uploadDocument = async () => {
+
     if (!selectedFile) {
-      setUploadMessage("Please select a PDF document first.");
+
+      setUploadMessage(
+        "Please select a PDF document first."
+      );
+
       return;
     }
 
+
     if (
       selectedFile.type !== "application/pdf" &&
-      !selectedFile.name.toLowerCase().endsWith(".pdf")
+      !selectedFile.name
+        .toLowerCase()
+        .endsWith(".pdf")
     ) {
-      setUploadMessage("Only PDF documents are supported.");
+
+      setUploadMessage(
+        "Only PDF documents are supported."
+      );
+
       return;
     }
+
 
     setUploading(true);
     setUploadMessage("");
 
+
     try {
+
       const formData = new FormData();
-      formData.append("file", selectedFile);
+
+      formData.append(
+        "file",
+        selectedFile
+      );
+
 
       const response = await fetch(
-        `${API_BASE_URL}/api/documents/upload`,
+        `${API_BASE}/api/documents/upload`,
         {
           method: "POST",
           body: formData
         }
       );
 
-      const data = await response.json();
+
+      const data =
+        await response.json();
+
 
       if (!response.ok) {
-        throw new Error(data.detail || data.message || "Upload failed.");
+
+        throw new Error(
+          data.detail ||
+          data.message ||
+          "Upload failed."
+        );
+
       }
+
 
       setUploadMessage(
-  `✓    ${data.filename || selectedFile.name} uploaded successfully.`
+        `✓ ${data.filename || selectedFile.name} uploaded successfully.`
       );
+
       setSelectedFile(null);
 
-      const [documentsResponse, statsResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/documents`),
-        fetch(`${API_BASE_URL}/api/stats`)
-      ]);
+      await loadDocumentsAndStats();
 
-      if (documentsResponse.ok) {
-        const documentsData = await documentsResponse.json();
-        setDocuments(Array.isArray(documentsData) ? documentsData : []);
-      }
 
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json();
-        setStats(statsData);
-      }
     } catch (error) {
-      console.error("Document upload error:", error);
-      setUploadMessage(`Upload failed: ${error.message}`);
+
+      console.error(
+        "Document upload error:",
+        error
+      );
+
+      setUploadMessage(
+        `Upload failed: ${error.message}`
+      );
+
+
     } finally {
+
       setUploading(false);
+
     }
+
   };
-
-
-  // =========================
-  // RECYCLE BIN
-  // =========================
-
-  const deleteDocument = async (documentId, filename) => {
-    const confirmed = window.confirm(
-      `Move "${filename}" to the recycle bin?\n\nYou can restore it later from the Bin.`
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setDeletingDocumentId(documentId);
-    setUploadMessage("");
-
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/documents/${documentId}`,
-        {
-          method: "DELETE"
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail || data.message || "Delete failed."
-        );
-      }
-
-      setDocuments((currentDocuments) =>
-        currentDocuments.filter((document) => document.id !== documentId)
-      );
-
-      const trashResponse = await fetch(
-        `${API_BASE_URL}/api/trash`
-      );
-
-      if (trashResponse.ok) {
-        const trashData = await trashResponse.json();
-        setTrashDocuments(Array.isArray(trashData) ? trashData : []);
-      }
-
-      setUploadMessage(`✓ ${filename} moved to the recycle bin.`);
-
-      const statsResponse = await fetch(
-        `${API_BASE_URL}/api/stats`
-      );
-
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json();
-        setStats(statsData);
-      }
-    } catch (error) {
-      console.error("Document delete error:", error);
-      setUploadMessage(`Delete failed: ${error.message}`);
-    } finally {
-      setDeletingDocumentId(null);
-    }
-  };
-
-
-  const restoreDocument = async (documentId, filename) => {
-    setRestoringDocumentId(documentId);
-    setUploadMessage("");
-
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/trash/${documentId}/restore`,
-        {
-          method: "POST"
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail || data.message || "Restore failed."
-        );
-      }
-
-      const [documentsResponse, trashResponse, statsResponse] =
-        await Promise.all([
-          fetch(`${API_BASE_URL}/api/documents`),
-          fetch(`${API_BASE_URL}/api/trash`),
-          fetch(`${API_BASE_URL}/api/stats`)
-        ]);
-
-      if (documentsResponse.ok) {
-        const documentsData = await documentsResponse.json();
-        setDocuments(Array.isArray(documentsData) ? documentsData : []);
-      }
-
-      if (trashResponse.ok) {
-        const trashData = await trashResponse.json();
-        setTrashDocuments(Array.isArray(trashData) ? trashData : []);
-      }
-
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json();
-        setStats(statsData);
-      }
-
-      setUploadMessage(`✓ ${filename} restored successfully.`);
-    } catch (error) {
-      console.error("Document restore error:", error);
-      setUploadMessage(`Restore failed: ${error.message}`);
-    } finally {
-      setRestoringDocumentId(null);
-    }
-  };
-
-
-  const permanentlyDeleteDocument = async (documentId, filename) => {
-    const confirmed = window.confirm(
-      `PERMANENTLY DELETE "${filename}"?\n\nThis cannot be undone.`
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setPermanentlyDeletingDocumentId(documentId);
-    setUploadMessage("");
-
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/trash/${documentId}`,
-        {
-          method: "DELETE"
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail || data.message || "Permanent delete failed."
-        );
-      }
-
-      setTrashDocuments((currentDocuments) =>
-        currentDocuments.filter((document) => document.id !== documentId)
-      );
-
-      setUploadMessage(`✓ ${filename} permanently deleted.`);
-
-      const statsResponse = await fetch(
-        `${API_BASE_URL}/api/stats`
-      );
-
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json();
-        setStats(statsData);
-      }
-    } catch (error) {
-      console.error("Permanent delete error:", error);
-      setUploadMessage(`Permanent delete failed: ${error.message}`);
-    } finally {
-      setPermanentlyDeletingDocumentId(null);
-    }
-  };
-
-
 
 
   // =========================
   // SEARCH
   // =========================
 
-const searchDocuments = async () => {
+  const searchDocuments = async () => {
 
-  if (!query.trim()) {
-    return;
-  }
+    if (!query.trim()) {
+      return;
+    }
 
-  setShowSupportingEvidence(false);
 
-  try {
+    setShowSupportingEvidence(false);
 
-    const externalQuery = `mining ${query.trim()}`;
 
-    const [documentResponse, externalResponse] =
-      await Promise.allSettled([
+    try {
+
+      const externalQuery =
+        `mining ${query.trim()}`;
+
+
+      const [
+        documentResponse,
+        externalResponse
+      ] = await Promise.allSettled([
 
         fetch(
-          `${API_BASE_URL}/api/search?query=${encodeURIComponent(
+          `${API_BASE}/api/search?query=${encodeURIComponent(
             query
           )}`
         ),
 
         fetch(
-          `${API_BASE_URL}/api/external-search?query=${encodeURIComponent(
+          `${API_BASE}/api/external-search?query=${encodeURIComponent(
             externalQuery
           )}`
         )
@@ -405,116 +276,119 @@ const searchDocuments = async () => {
       ]);
 
 
-    if (documentResponse.status === "fulfilled") {
+      if (
+        documentResponse.status === "fulfilled" &&
+        documentResponse.value.ok
+      ) {
 
-      const documentData =
-        await documentResponse.value.json();
+        const documentData =
+          await documentResponse.value.json();
 
-      setSearchResults(
-        Array.isArray(documentData)
-          ? documentData
-          : []
-      );
+        setSearchResults(
+          Array.isArray(documentData)
+            ? documentData
+            : []
+        );
 
-    } else {
+      } else {
+
+        console.error(
+          "Regulatory search failed:",
+          documentResponse.reason
+        );
+
+        setSearchResults([]);
+
+      }
+
+
+      if (
+        externalResponse.status === "fulfilled" &&
+        externalResponse.value.ok
+      ) {
+
+        const externalData =
+          await externalResponse.value.json();
+
+        setExternalResults(
+          Array.isArray(externalData)
+            ? externalData
+            : []
+        );
+
+      } else {
+
+        console.error(
+          "External search failed:",
+          externalResponse.reason
+        );
+
+        setExternalResults([]);
+
+      }
+
+
+      setActivePage("search");
+
+
+    } catch (error) {
 
       console.error(
-        "Regulatory search failed:",
-        documentResponse.reason
+        "Search error:",
+        error
       );
-
-      setSearchResults([]);
 
     }
 
-
-    if (externalResponse.status === "fulfilled") {
-
-      const externalData =
-        await externalResponse.value.json();
-
-      setExternalResults(
-        Array.isArray(externalData)
-          ? externalData
-          : []
-      );
-
-    } else {
-
-      console.error(
-        "External search failed:",
-        externalResponse.reason
-      );
-
-      setExternalResults([]);
-
-    }
-
-
-    setActivePage("search");
-
-  } catch (error) {
-
-    console.error(
-      "Error performing search:",
-      error
-    );
-
-  }
-
-};
+  };
 
 
   // =========================
   // COMPLIANCE CHECK
   // =========================
 
-  const checkCompliance = () => {
+  const checkCompliance = async () => {
 
     if (!actualAirflow) {
       return;
     }
 
-    if (documents.length === 0) {
-      setComplianceResult({
-        result: "ERROR",
-        severity: "HIGH",
-        message: "No regulatory document is available for compliance checking."
-      });
-      return;
+
+    try {
+
+      const response = await fetch(
+        `${API_BASE}/api/compliance/check`,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json"
+          },
+
+          body: JSON.stringify({
+            document_id: 1,
+            actual_airflow: Number(actualAirflow)
+          })
+
+        }
+      );
+
+
+      const data =
+        await response.json();
+
+
+      setComplianceResult(data);
+
+
+    } catch (error) {
+
+      console.error(
+        "Error checking compliance:",
+        error
+      );
+
     }
-
-
-    fetch(
-      `${API_BASE_URL}/api/compliance/check`,
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json"
-        },
-
-        body: JSON.stringify({
-          document_id: documents[0].id,
-          actual_airflow: Number(actualAirflow)
-        })
-
-      }
-    )
-      .then((response) => response.json())
-      .then((data) => {
-
-        setComplianceResult(data);
-
-      })
-      .catch((error) => {
-
-        console.error(
-          "Error checking compliance:",
-          error
-        );
-
-      });
 
   };
 
@@ -523,59 +397,74 @@ const searchDocuments = async () => {
   // INCIDENT CLASSIFICATION
   // =========================
 
-  const classifyIncident = () => {
+  const classifyIncident = async () => {
 
     if (!incidentDescription.trim()) {
       return;
     }
 
 
-    fetch(
-      `${API_BASE_URL}/api/incidents/classify`,
-      {
-        method: "POST",
+    try {
 
-        headers: {
-          "Content-Type": "application/json"
-        },
+      const response = await fetch(
+        `${API_BASE}/api/incidents/classify`,
+        {
+          method: "POST",
 
-        body: JSON.stringify({
-          description: incidentDescription
-        })
+          headers: {
+            "Content-Type": "application/json"
+          },
 
-      }
-    )
-      .then((response) => response.json())
-      .then((data) => {
+          body: JSON.stringify({
+            description: incidentDescription
+          })
 
-        setIncidentResult(data);
+        }
+      );
 
-      })
-      .catch((error) => {
 
-        console.error(
-          "Error classifying incident:",
-          error
-        );
+      const data =
+        await response.json();
 
-      });
+
+      setIncidentResult(data);
+
+
+    } catch (error) {
+
+      console.error(
+        "Error classifying incident:",
+        error
+      );
+
+    }
 
   };
 
 
-  const uniqueSearchResults = searchResults.filter(
-    (result, index, self) =>
-      index ===
-      self.findIndex(
-        (item) =>
-          item.content?.trim().toLowerCase() ===
-          result.content?.trim().toLowerCase()
-      )
-  );
+  // =========================
+  // SEARCH RESULT CLEANUP
+  // =========================
 
-  const primaryResult = uniqueSearchResults[0];
+  const uniqueSearchResults =
+    searchResults.filter(
+      (result, index, self) =>
+        index ===
+        self.findIndex(
+          (item) =>
+            item.content?.trim().toLowerCase() ===
+            result.content?.trim().toLowerCase()
+        )
+    );
 
-  const supportingResults = uniqueSearchResults.slice(1);
+
+  const primaryResult =
+    uniqueSearchResults[0];
+
+
+  const supportingResults =
+    uniqueSearchResults.slice(1);
+
 
   return (
 
@@ -625,20 +514,6 @@ const searchDocuments = async () => {
           }
         >
           Documents
-        </button>
-
-
-        <button
-          className={
-            activePage === "bin"
-              ? "nav-button active"
-              : "nav-button"
-          }
-          onClick={() =>
-            setActivePage("bin")
-          }
-        >
-          Bin
         </button>
 
 
@@ -712,10 +587,6 @@ const searchDocuments = async () => {
             </p>
 
 
-            {/* =========================
-                MAIN SEARCH
-            ========================= */}
-
             <div className="dashboard-search">
 
               <input
@@ -744,10 +615,6 @@ const searchDocuments = async () => {
 
             </div>
 
-
-            {/* =========================
-                QUICK ACTIONS
-            ========================= */}
 
             <div className="quick-actions">
 
@@ -788,10 +655,6 @@ const searchDocuments = async () => {
 
             </div>
 
-
-            {/* =========================
-                STATISTICS
-            ========================= */}
 
             <div className="stats">
 
@@ -865,10 +728,6 @@ const searchDocuments = async () => {
 
             </div>
 
-
-            {/* =========================
-                SAFETY DOMAINS
-            ========================= */}
 
             <div className="safety-domains">
 
@@ -1005,7 +864,9 @@ const searchDocuments = async () => {
           <section>
 
             <div className="page-header">
+
               <div>
+
                 <span className="page-label">
                   DOCUMENT MANAGEMENT
                 </span>
@@ -1017,13 +878,11 @@ const searchDocuments = async () => {
                 <p>
                   Upload and manage the regulatory sources indexed by MineSafe.
                 </p>
+
               </div>
+
             </div>
 
-
-            {/* =========================
-                DOCUMENT UPLOAD
-            ========================= */}
 
             <div
               className="document-upload-card"
@@ -1047,24 +906,40 @@ const searchDocuments = async () => {
                   marginBottom: "18px"
                 }}
               >
+
                 <div>
+
                   <span className="result-label">
                     ADD REGULATORY SOURCE
                   </span>
 
-                  <h3 style={{ marginTop: "7px", marginBottom: "5px" }}>
+                  <h3
+                    style={{
+                      marginTop: "7px",
+                      marginBottom: "5px"
+                    }}
+                  >
                     Upload a safety PDF
                   </h3>
 
-                  <p style={{ margin: 0, color: "#64748b", fontSize: "13px" }}>
+                  <p
+                    style={{
+                      margin: 0,
+                      color: "#64748b",
+                      fontSize: "13px"
+                    }}
+                  >
                     The document will be processed and indexed for regulatory search.
                   </p>
+
                 </div>
 
                 <span className="verified-badge">
                   PDF ONLY
                 </span>
+
               </div>
+
 
               <div
                 style={{
@@ -1093,16 +968,23 @@ const searchDocuments = async () => {
                   Choose PDF
                 </label>
 
+
                 <input
                   id="document-file"
                   type="file"
                   accept=".pdf,application/pdf"
                   style={{ display: "none" }}
                   onChange={(event) => {
-                    setSelectedFile(event.target.files?.[0] || null);
+
+                    setSelectedFile(
+                      event.target.files?.[0] || null
+                    );
+
                     setUploadMessage("");
+
                   }}
                 />
+
 
                 <button
                   onClick={uploadDocument}
@@ -1122,10 +1004,14 @@ const searchDocuments = async () => {
                         : 0.55
                   }}
                 >
-                  {uploading ? "Uploading..." : "Upload Document"}
+                  {uploading
+                    ? "Uploading..."
+                    : "Upload Document"}
                 </button>
 
+
                 {selectedFile && (
+
                   <span
                     style={{
                       fontSize: "13px",
@@ -1135,11 +1021,14 @@ const searchDocuments = async () => {
                   >
                     {selectedFile.name}
                   </span>
+
                 )}
 
               </div>
 
+
               {uploadMessage && (
+
                 <p
                   style={{
                     marginTop: "14px",
@@ -1153,14 +1042,11 @@ const searchDocuments = async () => {
                 >
                   {uploadMessage}
                 </p>
+
               )}
 
             </div>
 
-
-            {/* =========================
-                DOCUMENT LIBRARY
-            ========================= */}
 
             <div style={{ marginTop: "28px" }}>
 
@@ -1174,24 +1060,44 @@ const searchDocuments = async () => {
                   marginBottom: "14px"
                 }}
               >
+
                 <div>
+
                   <span className="page-label">
                     INDEXED SOURCES
                   </span>
 
-                  <h3 style={{ marginTop: "6px", marginBottom: 0 }}>
+                  <h3
+                    style={{
+                      marginTop: "6px",
+                      marginBottom: 0
+                    }}
+                  >
                     Document Library
                   </h3>
+
                 </div>
 
-                <span style={{ color: "#64748b", fontSize: "13px" }}>
-                  {documents.length} source{documents.length === 1 ? "" : "s"} indexed
+
+                <span
+                  style={{
+                    color: "#64748b",
+                    fontSize: "13px"
+                  }}
+                >
+                  {documents.length} source
+                  {documents.length === 1
+                    ? ""
+                    : "s"} indexed
                 </span>
+
               </div>
+
 
               {documents.length === 0 ? (
 
                 <div className="empty-search-state">
+
                   <div className="empty-icon">
                     📄
                   </div>
@@ -1203,6 +1109,7 @@ const searchDocuments = async () => {
                   <p>
                     Upload a regulatory PDF above to build the MineSafe knowledge base.
                   </p>
+
                 </div>
 
               ) : (
@@ -1233,6 +1140,7 @@ const searchDocuments = async () => {
                       >
 
                         <div>
+
                           <span
                             style={{
                               display: "inline-block",
@@ -1249,7 +1157,9 @@ const searchDocuments = async () => {
                           <h3 style={{ margin: 0 }}>
                             {document.title}
                           </h3>
+
                         </div>
+
 
                         <span
                           style={{
@@ -1267,6 +1177,7 @@ const searchDocuments = async () => {
 
                       </div>
 
+
                       <div
                         style={{
                           marginTop: "15px",
@@ -1275,15 +1186,30 @@ const searchDocuments = async () => {
                         }}
                       >
 
-                        <p style={{ margin: "0 0 7px", fontSize: "13px" }}>
-                          <strong>File:</strong> {document.filename}
+                        <p
+                          style={{
+                            margin: "0 0 7px",
+                            fontSize: "13px"
+                          }}
+                        >
+                          <strong>File:</strong>{" "}
+                          {document.filename}
                         </p>
 
-                        <p style={{ margin: "0 0 7px", fontSize: "13px" }}>
-                          <strong>Type:</strong> {document.document_type}
+
+                        <p
+                          style={{
+                            margin: "0 0 7px",
+                            fontSize: "13px"
+                          }}
+                        >
+                          <strong>Type:</strong>{" "}
+                          {document.document_type}
                         </p>
+
 
                         {document.uploaded_at && (
+
                           <p
                             style={{
                               margin: 0,
@@ -1292,49 +1218,13 @@ const searchDocuments = async () => {
                             }}
                           >
                             Added:{" "}
-                            {new Date(document.uploaded_at).toLocaleString()}
+                            {new Date(
+                              document.uploaded_at
+                            ).toLocaleString()}
                           </p>
+
                         )}
 
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "16px",
-                          paddingTop: "14px",
-                          borderTop: "1px solid #eef2f6",
-                          display: "flex",
-                          justifyContent: "flex-end"
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            deleteDocument(document.id, document.filename)
-                          }
-                          disabled={deletingDocumentId === document.id}
-                          style={{
-                            padding: "9px 14px",
-                            borderRadius: "8px",
-                            border: "1px solid #fecaca",
-                            background: "#fff7f7",
-                            color: "#b91c1c",
-                            fontSize: "12px",
-                            fontWeight: 700,
-                            cursor:
-                              deletingDocumentId === document.id
-                                ? "not-allowed"
-                                : "pointer",
-                            opacity:
-                              deletingDocumentId === document.id
-                                ? 0.6
-                                : 1
-                          }}
-                        >
-                          {deletingDocumentId === document.id
-                            ? "Deleting..."
-                            : "Delete Document"}
-                        </button>
                       </div>
 
                     </div>
@@ -1349,237 +1239,6 @@ const searchDocuments = async () => {
 
           </section>
 
-        )}
-
-
-        {/* =========================
-            RECYCLE BIN
-        ========================= */}
-
-        {activePage === "bin" && (
-          <section>
-            <div className="page-header">
-              <div>
-                <span className="page-label">
-                  DOCUMENT RECOVERY
-                </span>
-
-                <h2>
-                  Recycle Bin
-                </h2>
-
-                <p>
-                  Deleted documents are kept here so accidental deletion
-                  can be safely reversed.
-                </p>
-              </div>
-
-              <span className="verified-badge">
-                {trashDocuments.length} ITEM{trashDocuments.length === 1 ? "" : "S"}
-              </span>
-            </div>
-
-
-            {trashDocuments.length === 0 ? (
-
-              <div className="empty-search-state">
-                <div className="empty-icon">
-                  🗑️
-                </div>
-
-                <h3>
-                  Recycle bin is empty
-                </h3>
-
-                <p>
-                  Documents moved from the library will appear here.
-                </p>
-              </div>
-
-            ) : (
-
-              <div
-                style={{
-                  display: "grid",
-                  gap: "14px",
-                  marginTop: "24px"
-                }}
-              >
-
-                {trashDocuments.map((document) => (
-
-                  <div
-                    key={document.id}
-                    style={{
-                      background: "#ffffff",
-                      border: "1px solid #dbe3ec",
-                      borderRadius: "14px",
-                      padding: "20px",
-                      boxShadow: "0 4px 14px rgba(15, 23, 42, 0.04)"
-                    }}
-                  >
-
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: "16px",
-                        alignItems: "flex-start",
-                        flexWrap: "wrap"
-                      }}
-                    >
-
-                      <div>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            fontSize: "10px",
-                            fontWeight: 800,
-                            letterSpacing: "0.08em",
-                            color: "#b45309",
-                            marginBottom: "7px"
-                          }}
-                        >
-                          DELETED DOCUMENT
-                        </span>
-
-                        <h3 style={{ margin: 0 }}>
-                          {document.title}
-                        </h3>
-                      </div>
-
-                      <span
-                        style={{
-                          flexShrink: 0,
-                          padding: "5px 9px",
-                          borderRadius: "999px",
-                          background: "#fff7ed",
-                          color: "#b45309",
-                          fontSize: "10px",
-                          fontWeight: 700
-                        }}
-                      >
-                        IN BIN
-                      </span>
-
-                    </div>
-
-
-                    <div
-                      style={{
-                        marginTop: "15px",
-                        paddingTop: "13px",
-                        borderTop: "1px solid #eef2f6"
-                      }}
-                    >
-
-                      <p style={{ margin: "0 0 7px", fontSize: "13px" }}>
-                        <strong>File:</strong> {document.filename}
-                      </p>
-
-                      <p style={{ margin: "0 0 7px", fontSize: "13px" }}>
-                        <strong>Type:</strong> {document.document_type}
-                      </p>
-
-                      <p
-                        style={{
-                          margin: 0,
-                          color: "#64748b",
-                          fontSize: "12px"
-                        }}
-                      >
-                        Deleted:{" "}
-                        {document.deleted_at
-                          ? new Date(document.deleted_at).toLocaleString()
-                          : "Unknown"}
-                      </p>
-
-                    </div>
-
-
-                    <div
-                      style={{
-                        marginTop: "16px",
-                        paddingTop: "14px",
-                        borderTop: "1px solid #eef2f6",
-                        display: "flex",
-                        justifyContent: "flex-end",
-                        gap: "10px",
-                        flexWrap: "wrap"
-                      }}
-                    >
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          restoreDocument(document.id, document.filename)
-                        }
-                        disabled={
-                          restoringDocumentId === document.id ||
-                          permanentlyDeletingDocumentId === document.id
-                        }
-                        style={{
-                          padding: "9px 14px",
-                          borderRadius: "8px",
-                          border: "1px solid #99f6e4",
-                          background: "#f0fdfa",
-                          color: "#0f766e",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          opacity:
-                            restoringDocumentId === document.id
-                              ? 0.6
-                              : 1
-                        }}
-                      >
-                        {restoringDocumentId === document.id
-                          ? "Restoring..."
-                          : "Restore Document"}
-                      </button>
-
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          permanentlyDeleteDocument(
-                            document.id,
-                            document.filename
-                          )
-                        }
-                        disabled={
-                          restoringDocumentId === document.id ||
-                          permanentlyDeletingDocumentId === document.id
-                        }
-                        style={{
-                          padding: "9px 14px",
-                          borderRadius: "8px",
-                          border: "1px solid #fecaca",
-                          background: "#fff7f7",
-                          color: "#b91c1c",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          opacity:
-                            permanentlyDeletingDocumentId === document.id
-                              ? 0.6
-                              : 1
-                        }}
-                      >
-                        {permanentlyDeletingDocumentId === document.id
-                          ? "Deleting..."
-                          : "Delete Forever"}
-                      </button>
-
-                    </div>
-
-                  </div>
-                ))}
-
-              </div>
-            )}
-
-          </section>
         )}
 
 
@@ -1613,8 +1272,6 @@ const searchDocuments = async () => {
             </div>
 
 
-            {/* SEARCH BOX */}
-
             <div className="search-page-box">
 
               <input
@@ -1633,18 +1290,72 @@ const searchDocuments = async () => {
                 }}
               />
 
-              <button onClick={searchDocuments}>
+
+              <button
+                onClick={searchDocuments}
+              >
                 Search
               </button>
 
             </div>
 
 
-            {/* =========================
-                REGULATORY ANSWER
-            ========================= */}
+            {!query.trim() && (
 
-            {primaryResult ? (
+              <div className="empty-search-state">
+
+                <div className="empty-icon">
+                  🔎
+                </div>
+
+                <h3>
+                  Search regulatory evidence
+                </h3>
+
+                <p>
+                  Enter a safety, engineering or
+                  compliance question above.
+                </p>
+
+              </div>
+
+            )}
+
+
+            {query.trim() &&
+              !primaryResult && (
+
+                <div className="empty-search-state">
+
+                  <div className="empty-icon">
+                    🔎
+                  </div>
+
+                  <h3>
+                    No strong regulatory match found
+                  </h3>
+
+                  <p>
+                    MineSafe could not find sufficiently
+                    relevant indexed regulatory evidence
+                    for this query.
+                  </p>
+
+                  {externalResults.length > 0 && (
+
+                    <p>
+                      Supplementary external information
+                      may still be available below.
+                    </p>
+
+                  )}
+
+                </div>
+
+              )}
+
+
+            {primaryResult && (
 
               <div className="regulatory-answer">
 
@@ -1662,6 +1373,7 @@ const searchDocuments = async () => {
 
                   </div>
 
+
                   <span className="verified-badge">
                     ✓ Evidence Found
                   </span>
@@ -1672,7 +1384,8 @@ const searchDocuments = async () => {
                 <div className="answer-content">
 
                   <p className="main-evidence">
-                   {primaryResult.answer || primaryResult.content}
+                    {primaryResult.answer ||
+                      primaryResult.content}
                   </p>
 
                 </div>
@@ -1714,8 +1427,10 @@ const searchDocuments = async () => {
                     <span>
                       Relevance{" "}
                       {typeof primaryResult.score === "number"
-                        ? primaryResult.score.toFixed(3)
-                        : "—"}
+                        ? (
+                            primaryResult.score * 100
+                          ).toFixed(1)
+                        : "—"}%
                     </span>
 
                   </div>
@@ -1723,9 +1438,93 @@ const searchDocuments = async () => {
                 </div>
 
 
-                {/* =========================
-                    EXTERNAL INFORMATION
-                ========================= */}
+                {supportingResults.length > 0 && (
+
+                  <div className="supporting-section">
+
+                    <button
+                      className="supporting-toggle"
+                      onClick={() =>
+                        setShowSupportingEvidence(
+                          !showSupportingEvidence
+                        )
+                      }
+                    >
+                      {showSupportingEvidence
+                        ? "Hide supporting evidence ↑"
+                        : `View ${supportingResults.length} supporting ${
+                            supportingResults.length === 1
+                              ? "result"
+                              : "results"
+                          } ↓`}
+                    </button>
+
+
+                    {showSupportingEvidence && (
+
+                      <div className="supporting-evidence">
+
+                        {supportingResults.map(
+                          (result, index) => (
+
+                            <div
+                              className="supporting-card"
+                              key={`${result.document_id}-${result.chunk_id}-${index}`}
+                            >
+
+                              <div className="supporting-card-header">
+
+                                <span>
+                                  Supporting Evidence
+                                </span>
+
+                                <span>
+                                  Relevance{" "}
+                                  {typeof result.score === "number"
+                                    ? (
+                                        result.score * 100
+                                      ).toFixed(1)
+                                    : "—"}%
+                                </span>
+
+                              </div>
+
+
+                              <p>
+                                {result.answer ||
+                                  result.content}
+                              </p>
+
+
+                              <div className="supporting-meta">
+
+                                <span>
+                                  {result.document_title}
+                                </span>
+
+                                <span>
+                                  Page {result.page_number}
+                                </span>
+
+                                <span>
+                                  Chunk {result.chunk_id}
+                                </span>
+
+                              </div>
+
+                            </div>
+
+                          )
+                        )}
+
+                      </div>
+
+                    )}
+
+                  </div>
+
+                )}
+
 
                 <div className="external-results">
 
@@ -1803,107 +1602,6 @@ const searchDocuments = async () => {
 
                 </div>
 
-
-                {/* SUPPORTING EVIDENCE */}
-
-                {supportingResults.length > 0 && (
-
-                  <div className="supporting-section">
-
-                    <button
-                      className="supporting-toggle"
-                      onClick={() =>
-                        setShowSupportingEvidence(
-                          !showSupportingEvidence
-                        )
-                      }
-                    >
-
-                      {showSupportingEvidence
-                        ? "Hide supporting evidence ↑"
-                        : `View ${supportingResults.length} supporting ${supportingResults.length === 1 ? "result" : "results"} ↓`
-                      }
-
-                    </button>
-
-
-                    {showSupportingEvidence && (
-
-                      <div className="supporting-evidence">
-
-                        {supportingResults.map(
-                          (result, index) => (
-
-                            <div
-                              className="supporting-card"
-                              key={`${result.document_id}-${result.chunk_id}-${index}`}
-                            >
-
-                              <div className="supporting-card-header">
-
-                                <span>
-                                  Supporting Evidence
-                                </span>
-
-                                <span>
-                                  Relevance{" "}
-                                  {typeof result.score === "number"
-                                    ? result.score.toFixed(3)
-                                    : "—"}
-                                </span>
-
-                              </div>
-
-
-                              <p>
-                                {result.content}
-                              </p>
-
-
-                              <div className="supporting-meta">
-
-                                <span>
-                                  Page {result.page_number}
-                                </span>
-
-                                <span>
-                                  Chunk {result.chunk_id}
-                                </span>
-
-                              </div>
-
-                            </div>
-
-                          )
-                        )}
-
-                      </div>
-
-                    )}
-
-                  </div>
-
-                )}
-
-              </div>
-
-            ) : (
-
-              <div className="empty-search-state">
-
-                <div className="empty-icon">
-                  🔎
-                </div>
-
-                <h3>
-                  Search regulatory evidence
-                </h3>
-
-                <p>
-                  Enter a safety, engineering or
-                  compliance question above.
-                </p>
-
               </div>
 
             )}
@@ -1911,6 +1609,7 @@ const searchDocuments = async () => {
           </section>
 
         )}
+
 
         {/* =========================
             COMPLIANCE
@@ -1937,7 +1636,9 @@ const searchDocuments = async () => {
               placeholder="Actual airflow (m3/s)"
               value={actualAirflow}
               onChange={(event) =>
-                setActualAirflow(event.target.value)
+                setActualAirflow(
+                  event.target.value
+                )
               }
               onKeyDown={(event) => {
 
@@ -1989,8 +1690,7 @@ const searchDocuments = async () => {
                     <p>
                       Page:{" "}
                       {
-                        complianceResult
-                          .evidence
+                        complianceResult.evidence
                           .page_number
                       }
                     </p>
@@ -1998,8 +1698,7 @@ const searchDocuments = async () => {
 
                     <p>
                       {
-                        complianceResult
-                          .evidence
+                        complianceResult.evidence
                           .text
                       }
                     </p>
@@ -2008,8 +1707,7 @@ const searchDocuments = async () => {
                     <p>
                       Required airflow:{" "}
                       {
-                        complianceResult
-                          .evidence
+                        complianceResult.evidence
                           .required_airflow
                       }{" "}
                       m3/s
@@ -2079,6 +1777,7 @@ const searchDocuments = async () => {
                 Incident Description
               </label>
 
+
               <textarea
                 placeholder="Example: The main ventilation fan failed and airflow dropped severely."
                 value={incidentDescription}
@@ -2090,7 +1789,8 @@ const searchDocuments = async () => {
                 onKeyDown={(event) => {
 
                   if (
-                    (event.ctrlKey || event.metaKey) &&
+                    (event.ctrlKey ||
+                      event.metaKey) &&
                     event.key === "Enter"
                   ) {
                     classifyIncident();
@@ -2110,6 +1810,7 @@ const searchDocuments = async () => {
                   fontFamily: "inherit"
                 }}
               />
+
 
               <div
                 style={{
@@ -2131,20 +1832,25 @@ const searchDocuments = async () => {
                   Ctrl + Enter to analyze
                 </span>
 
+
                 <button
                   onClick={classifyIncident}
-                  disabled={!incidentDescription.trim()}
+                  disabled={
+                    !incidentDescription.trim()
+                  }
                   style={{
                     padding: "11px 22px",
                     borderRadius: "9px",
                     border: "none",
                     fontWeight: 700,
-                    cursor: incidentDescription.trim()
-                      ? "pointer"
-                      : "not-allowed",
-                    opacity: incidentDescription.trim()
-                      ? 1
-                      : 0.55
+                    cursor:
+                      incidentDescription.trim()
+                        ? "pointer"
+                        : "not-allowed",
+                    opacity:
+                      incidentDescription.trim()
+                        ? 1
+                        : 0.55
                   }}
                 >
                   Analyze Incident
@@ -2196,6 +1902,7 @@ const searchDocuments = async () => {
 
                   </div>
 
+
                   <span className="verified-badge">
                     ✓ Classified
                   </span>
@@ -2232,6 +1939,7 @@ const searchDocuments = async () => {
                       CATEGORY
                     </span>
 
+
                     <div
                       style={{
                         fontSize: "22px",
@@ -2264,6 +1972,7 @@ const searchDocuments = async () => {
                     >
                       PRIORITY
                     </span>
+
 
                     <div
                       style={{
@@ -2301,6 +2010,7 @@ const searchDocuments = async () => {
                     INCIDENT
                   </span>
 
+
                   <p
                     style={{
                       marginBottom: 0,
@@ -2326,5 +2036,6 @@ const searchDocuments = async () => {
 
   );
 }
-  
+
+
 export default App;

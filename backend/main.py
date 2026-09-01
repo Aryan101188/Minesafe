@@ -2,7 +2,6 @@ import urllib.parse
 import urllib.request
 import json
 from pathlib import Path
-from datetime import datetime, timezone
 
 from sqlalchemy import text
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -19,63 +18,12 @@ from requirement_extractor import extract_airflow_requirement
 from tfidf_retriever import search_tfidf
 
 
-
 app = FastAPI(title="MineSafe API")
-
-
-# ============================================================
-# RECYCLE BIN
-# ============================================================
-
-TRASH_DIR = Path("../data/trash")
-TRASH_MANIFEST = TRASH_DIR / "manifest.json"
-
-
-def load_trash_manifest():
-    TRASH_DIR.mkdir(parents=True, exist_ok=True)
-
-    if not TRASH_MANIFEST.exists():
-        return {}
-
-    try:
-        data = json.loads(TRASH_MANIFEST.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
-def save_trash_manifest(manifest):
-    TRASH_DIR.mkdir(parents=True, exist_ok=True)
-    temp_path = TRASH_DIR / "manifest.tmp"
-
-    temp_path.write_text(
-        json.dumps(manifest, indent=2),
-        encoding="utf-8"
-    )
-
-    temp_path.replace(TRASH_MANIFEST)
-
-
-def trashed_document_ids():
-    return {
-        int(document_id)
-        for document_id in load_trash_manifest().keys()
-        if str(document_id).isdigit()
-    }
-
-
-def document_is_trashed(document_id):
-    return document_id in trashed_document_ids()
-
-
 
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://minesafe-sable.vercel.app",
-    ],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -100,8 +48,6 @@ def health_check():
 
 @app.get("/api/documents")
 def get_documents():
-    trash_ids = trashed_document_ids()
-
     with engine.connect() as connection:
         result = connection.execute(
             text("""
@@ -116,63 +62,7 @@ def get_documents():
             """)
         )
 
-        return [
-            dict(row._mapping)
-            for row in result
-            if row.id not in trash_ids
-        ]
-
-
-@app.get("/api/trash")
-def get_trash():
-    manifest = load_trash_manifest()
-
-    if not manifest:
-        return []
-
-    document_ids = [int(value) for value in manifest.keys()]
-
-    with engine.connect() as connection:
-        result = connection.execute(
-            text("""
-                SELECT
-                    id,
-                    filename,
-                    title,
-                    document_type,
-                    uploaded_at
-                FROM documents
-                WHERE id IN :document_ids
-                ORDER BY id DESC
-            """).bindparams(
-                __import__("sqlalchemy").bindparam(
-                    "document_ids",
-                    expanding=True
-                )
-            ),
-            {"document_ids": document_ids}
-        )
-
-        documents = {
-            row.id: dict(row._mapping)
-            for row in result
-        }
-
-    trash = []
-
-    for document_id, deleted in manifest.items():
-        numeric_id = int(document_id)
-        document = documents.get(numeric_id)
-
-        if document is None:
-            continue
-
-        trash.append({
-            **document,
-            "deleted_at": deleted.get("deleted_at"),
-        })
-
-    return trash
+        return [dict(row._mapping) for row in result]
 
 
 @app.get("/api/documents/{document_id}/chunks")
@@ -234,101 +124,20 @@ async def upload_document(file: UploadFile = File(...)):
 @app.delete("/api/documents/{document_id}")
 def delete_document(document_id: int):
     """
-    Move a document to MineSafe's recycle bin.
+    Delete a document and all database records belonging to it.
 
-    Nothing is removed from the database or from the uploads directory.
-    This makes accidental deletion reversible.
+    Order matters:
+    1. compliance_checks
+    2. chunks
+    3. documents
+
+    The physical PDF is removed only when no other document record
+    uses the same filename.
     """
-    with engine.connect() as connection:
-        document = connection.execute(
-            text("""
-                SELECT
-                    id,
-                    filename,
-                    title,
-                    document_type,
-                    uploaded_at
-                FROM documents
-                WHERE id = :document_id
-            """),
-            {"document_id": document_id}
-        ).mappings().first()
-
-    if document is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Document not found."
-        )
-
-    manifest = load_trash_manifest()
-
-    if str(document_id) in manifest:
-        return {
-            "message": "Document is already in the recycle bin.",
-            "document_id": document_id
-        }
-
-    manifest[str(document_id)] = {
-        "deleted_at": datetime.now(timezone.utc).isoformat()
-    }
-
-    save_trash_manifest(manifest)
-
-    return {
-        "message": "Document moved to recycle bin.",
-        "document_id": document_id
-    }
-
-
-@app.post("/api/trash/{document_id}/restore")
-def restore_document(document_id: int):
-    manifest = load_trash_manifest()
-
-    if str(document_id) not in manifest:
-        raise HTTPException(
-            status_code=404,
-            detail="Document is not in the recycle bin."
-        )
-
-    with engine.connect() as connection:
-        document_exists = connection.execute(
-            text("""
-                SELECT COUNT(*)
-                FROM documents
-                WHERE id = :document_id
-            """),
-            {"document_id": document_id}
-        ).scalar()
-
-    if not document_exists:
-        raise HTTPException(
-            status_code=404,
-            detail="Original document record no longer exists."
-        )
-
-    del manifest[str(document_id)]
-    save_trash_manifest(manifest)
-
-    return {
-        "message": "Document restored successfully.",
-        "document_id": document_id
-    }
-
-
-@app.delete("/api/trash/{document_id}")
-def permanently_delete_document(document_id: int):
-    manifest = load_trash_manifest()
-
-    if str(document_id) not in manifest:
-        raise HTTPException(
-            status_code=404,
-            detail="Document is not in the recycle bin."
-        )
-
     with engine.begin() as connection:
         document = connection.execute(
             text("""
-                SELECT filename
+                SELECT id, filename
                 FROM documents
                 WHERE id = :document_id
             """),
@@ -376,10 +185,7 @@ def permanently_delete_document(document_id: int):
             {"filename": filename}
         ).scalar()
 
-    del manifest[str(document_id)]
-    save_trash_manifest(manifest)
-
-    # Only remove the physical PDF if no database record uses it anymore.
+    # Do not remove a shared PDF if another database record still uses it.
     if remaining == 0:
         upload_path = Path("../data/uploads") / Path(filename).name
         try:
@@ -389,7 +195,7 @@ def permanently_delete_document(document_id: int):
             pass
 
     return {
-        "message": "Document permanently deleted.",
+        "message": "Document deleted successfully",
         "document_id": document_id
     }
 
@@ -405,12 +211,6 @@ class AirflowCheck(BaseModel):
 
 @app.post("/api/compliance/check")
 def compliance_check(data: AirflowCheck):
-    if document_is_trashed(data.document_id):
-        return {
-            "result": "ERROR",
-            "message": "This document is in the recycle bin. Restore it before running compliance checks."
-        }
-
     rule = find_ventilation_rule(data.document_id)
 
     if rule is None:
@@ -499,14 +299,7 @@ def compliance_check(data: AirflowCheck):
 
 @app.get("/api/search")
 def search_documents(query: str):
-    results = search_tfidf(query, top_k=10)
-    trash_ids = trashed_document_ids()
-
-    return [
-        result
-        for result in results
-        if result.get("document_id") not in trash_ids
-    ][:5]
+    return search_tfidf(query, top_k=5)
 
 
 # ============================================================
@@ -603,35 +396,18 @@ def classify_incident_api(data: IncidentCheck):
 
 @app.get("/api/stats")
 def get_stats():
-    trash_ids = trashed_document_ids()
-
     with engine.connect() as connection:
-        document_rows = connection.execute(
-            text("SELECT id FROM documents")
-        ).fetchall()
+        document_count = connection.execute(
+            text("SELECT COUNT(*) FROM documents")
+        ).scalar()
 
-        chunk_rows = connection.execute(
-            text("SELECT document_id FROM chunks")
-        ).fetchall()
+        chunk_count = connection.execute(
+            text("SELECT COUNT(*) FROM chunks")
+        ).scalar()
 
-        compliance_rows = connection.execute(
-            text("SELECT document_id FROM compliance_checks")
-        ).fetchall()
-
-    document_count = sum(
-        1 for row in document_rows
-        if row.id not in trash_ids
-    )
-
-    chunk_count = sum(
-        1 for row in chunk_rows
-        if row.document_id not in trash_ids
-    )
-
-    compliance_count = sum(
-        1 for row in compliance_rows
-        if row.document_id not in trash_ids
-    )
+        compliance_count = connection.execute(
+            text("SELECT COUNT(*) FROM compliance_checks")
+        ).scalar()
 
     return {
         "documents": document_count,
