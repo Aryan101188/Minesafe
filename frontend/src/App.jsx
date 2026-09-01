@@ -49,7 +49,7 @@ function App() {
 
   useEffect(() => {
 
-    fetch("http://127.0.0.1:8000/api/documents")
+    fetch("/api/documents")
       .then((response) => response.json())
       .then((data) => {
         setDocuments(data);
@@ -62,7 +62,7 @@ function App() {
       });
 
 
-    fetch("http://127.0.0.1:8000/api/stats")
+    fetch("/api/stats")
       .then((response) => response.json())
       .then((data) => {
         setStats(data);
@@ -74,7 +74,7 @@ function App() {
         );
       });
 
-    fetch("http://127.0.0.1:8000/api/trash")
+    fetch("/api/trash")
       .then((response) => response.json())
       .then((data) => {
         setTrashDocuments(Array.isArray(data) ? data : []);
@@ -159,7 +159,7 @@ function App() {
       formData.append("file", selectedFile);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/api/documents/upload",
+        "/api/documents/upload",
         {
           method: "POST",
           body: formData
@@ -178,8 +178,8 @@ function App() {
       setSelectedFile(null);
 
       const [documentsResponse, statsResponse] = await Promise.all([
-        fetch("http://127.0.0.1:8000/api/documents"),
-        fetch("http://127.0.0.1:8000/api/stats")
+        fetch("/api/documents"),
+        fetch("/api/stats")
       ]);
 
       if (documentsResponse.ok) {
@@ -218,7 +218,7 @@ function App() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/documents/${documentId}`,
+        `/api/documents/${documentId}`,
         {
           method: "DELETE"
         }
@@ -237,7 +237,7 @@ function App() {
       );
 
       const trashResponse = await fetch(
-        "http://127.0.0.1:8000/api/trash"
+        "/api/trash"
       );
 
       if (trashResponse.ok) {
@@ -248,7 +248,7 @@ function App() {
       setUploadMessage(`✓ ${filename} moved to the recycle bin.`);
 
       const statsResponse = await fetch(
-        "http://127.0.0.1:8000/api/stats"
+        "/api/stats"
       );
 
       if (statsResponse.ok) {
@@ -270,7 +270,7 @@ function App() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/trash/${documentId}/restore`,
+        `/api/trash/${documentId}/restore`,
         {
           method: "POST"
         }
@@ -286,9 +286,9 @@ function App() {
 
       const [documentsResponse, trashResponse, statsResponse] =
         await Promise.all([
-          fetch("http://127.0.0.1:8000/api/documents"),
-          fetch("http://127.0.0.1:8000/api/trash"),
-          fetch("http://127.0.0.1:8000/api/stats")
+          fetch("/api/documents"),
+          fetch("/api/trash"),
+          fetch("/api/stats")
         ]);
 
       if (documentsResponse.ok) {
@@ -330,7 +330,7 @@ function App() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/trash/${documentId}`,
+        `/api/trash/${documentId}`,
         {
           method: "DELETE"
         }
@@ -351,7 +351,7 @@ function App() {
       setUploadMessage(`✓ ${filename} permanently deleted.`);
 
       const statsResponse = await fetch(
-        "http://127.0.0.1:8000/api/stats"
+        "/api/stats"
       );
 
       if (statsResponse.ok) {
@@ -389,13 +389,13 @@ const searchDocuments = async () => {
       await Promise.allSettled([
 
         fetch(
-          `http://127.0.0.1:8000/api/search?query=${encodeURIComponent(
+          `/api/search?query=${encodeURIComponent(
             query
           )}`
         ),
 
         fetch(
-          `http://127.0.0.1:8000/api/external-search?query=${encodeURIComponent(
+          `/api/external-search?query=${encodeURIComponent(
             externalQuery
           )}`
         )
@@ -484,7 +484,7 @@ const searchDocuments = async () => {
 
 
     fetch(
-      "http://127.0.0.1:8000/api/compliance/check",
+      "/api/compliance/check",
       {
         method: "POST",
 
@@ -529,7 +529,7 @@ const searchDocuments = async () => {
 
 
     fetch(
-      "http://127.0.0.1:8000/api/incidents/classify",
+      "/api/incidents/classify",
       {
         method: "POST",
 
