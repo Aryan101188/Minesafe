@@ -6,7 +6,7 @@ import {
 
 import "./App.css";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "https://minesafe-backend-0j6w.onrender.com";
 
 
 function App() {
@@ -76,7 +76,7 @@ function App() {
         );
       });
 
-    fetch(`${API_BASE_URL}/api/trash")
+    fetch(`${API_BASE_URL}/api/trash`)
       .then((response) => response.json())
       .then((data) => {
         setTrashDocuments(Array.isArray(data) ? data : []);
@@ -161,7 +161,7 @@ function App() {
       formData.append("file", selectedFile);
 
       const response = await fetch(
-        "/api/documents/upload",
+        `${API_BASE_URL}/api/documents/upload`,
         {
           method: "POST",
           body: formData
@@ -171,11 +171,11 @@ function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || data.message || "Upload failed.`);
+        throw new Error(data.detail || data.message || "Upload failed.");
       }
 
       setUploadMessage(
-        `✓ ${data.filename || selectedFile.name} uploaded successfully.`
+  `✓    ${data.filename || selectedFile.name} uploaded successfully.`
       );
       setSelectedFile(null);
 
@@ -220,7 +220,7 @@ function App() {
 
     try {
       const response = await fetch(
-        `/api/documents/${documentId}`,
+        `${API_BASE_URL}/api/documents/${documentId}`,
         {
           method: "DELETE"
         }
@@ -239,7 +239,7 @@ function App() {
       );
 
       const trashResponse = await fetch(
-        "/api/trash"
+        `${API_BASE_URL}/api/trash`
       );
 
       if (trashResponse.ok) {
@@ -250,7 +250,7 @@ function App() {
       setUploadMessage(`✓ ${filename} moved to the recycle bin.`);
 
       const statsResponse = await fetch(
-        "/api/stats"
+        `${API_BASE_URL}/api/stats`
       );
 
       if (statsResponse.ok) {
@@ -272,7 +272,7 @@ function App() {
 
     try {
       const response = await fetch(
-        `/api/trash/${documentId}/restore`,
+        `${API_BASE_URL}/api/trash/${documentId}/restore`,
         {
           method: "POST"
         }
@@ -332,7 +332,7 @@ function App() {
 
     try {
       const response = await fetch(
-        `/api/trash/${documentId}`,
+        `${API_BASE_URL}/api/trash/${documentId}`,
         {
           method: "DELETE"
         }
@@ -353,7 +353,7 @@ function App() {
       setUploadMessage(`✓ ${filename} permanently deleted.`);
 
       const statsResponse = await fetch(
-        "/api/stats"
+        `${API_BASE_URL}/api/stats`
       );
 
       if (statsResponse.ok) {
@@ -391,13 +391,13 @@ const searchDocuments = async () => {
       await Promise.allSettled([
 
         fetch(
-          `/api/search?query=${encodeURIComponent(
+          `${API_BASE_URL}/api/search?query=${encodeURIComponent(
             query
           )}`
         ),
 
         fetch(
-          `/api/external-search?query=${encodeURIComponent(
+          `${API_BASE_URL}/api/external-search?query=${encodeURIComponent(
             externalQuery
           )}`
         )
@@ -486,7 +486,7 @@ const searchDocuments = async () => {
 
 
     fetch(
-      "/api/compliance/check",
+      `${API_BASE_URL}/api/compliance/check`,
       {
         method: "POST",
 
@@ -531,7 +531,7 @@ const searchDocuments = async () => {
 
 
     fetch(
-      "/api/incidents/classify",
+      `${API_BASE_URL}/api/incidents/classify`,
       {
         method: "POST",
 
