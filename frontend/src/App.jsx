@@ -440,53 +440,30 @@ function App() {
   // COMPLIANCE CHECK
   // =========================
 
-  const checkCompliance = async () => {
+const checkCompliance = () => {
+  if (!actualAirflow) {
+    return;
+  }
 
-    if (!actualAirflow) {
-      return;
-    }
-
-
-    try {
-
-      const response = await fetch(
-        `${API_BASE}/api/compliance/check`,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type": "application/json"
-          },
-
-          body: JSON.stringify({
-            document_id: documents.find(
-              doc => doc.filename === "mine_ventilation_rules.pdf"
-            )?.id,
-            actual_airflow: Number(actualAirflow)
-          })
-
-        }
-      );
-
-
-      const data =
-        await response.json();
-
-
+  fetch(`${API_BASE_URL}/api/compliance/check`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      document_id: 5,
+      actual_airflow: Number(actualAirflow)
+    })
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      console.log("Compliance result:", data);
       setComplianceResult(data);
-
-
-    } catch (error) {
-
-      console.error(
-        "Error checking compliance:",
-        error
-      );
-
-    }
-
-  };
-
+    })
+    .catch((error) => {
+      console.error("Error checking compliance:", error);
+    });
+};
 
   // =========================
   // INCIDENT CLASSIFICATION
