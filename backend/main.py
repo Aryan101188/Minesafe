@@ -1,10 +1,13 @@
 import urllib.parse
 import urllib.request
 import json
+import ssl
+
 from pathlib import Path
 from datetime import datetime, timezone
 
 from sqlalchemy import text
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -19,8 +22,19 @@ from requirement_extractor import extract_airflow_requirement
 from tfidf_retriever import search_tfidf
 
 
-
 app = FastAPI(title="MineSafe API")
+
+with engine.begin() as connection:
+    connection.execute(
+        text("""
+            ALTER TABLE documents
+            ADD COLUMN IF NOT EXISTS source_url TEXT
+        """)
+    )
+
+
+class DGMSLinkRequest(BaseModel):
+    url: str
 
 
 # ============================================================
@@ -107,6 +121,7 @@ def get_documents():
                     title,
                     document_type,
                     uploaded_at
+                    source_url
                 FROM documents
                 ORDER BY id
             """)
@@ -253,6 +268,163 @@ async def upload_document(file: UploadFile = File(...)):
         raise HTTPException(
             status_code=500,
             detail=f"Upload processing failed: {str(e)}"
+        )
+
+    finally:
+
+        try:
+            if file_path.exists():
+                file_path.unlink()
+        except Exception:
+            pass
+
+# ============================================================
+# IMPORT DGMS PDF FROM URL
+# ============================================================
+
+@app.post("/api/documents/import-url")
+def import_dgms_pdf(data: DGMSLinkRequest):
+
+    url = data.url.strip()
+
+    # --------------------------------------------------------
+    # Only allow official DGMS website
+    # --------------------------------------------------------
+    parsed = urllib.parse.urlparse(url)
+
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only HTTP/HTTPS URLs are supported."
+        )
+
+    allowed_hosts = {
+        "dgms.gov.in",
+        "www.dgms.gov.in"
+    }
+
+    if parsed.hostname not in allowed_hosts:
+        raise HTTPException(
+            status_code=400,
+            detail="Only official DGMS PDF URLs are allowed."
+        )
+
+    if not url.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=400,
+            detail="The DGMS link must point to a PDF file."
+        )
+
+    # --------------------------------------------------------
+    # Temporary download location
+    # --------------------------------------------------------
+    upload_dir = Path("/tmp/minesafe_uploads")
+    upload_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    filename = Path(
+        urllib.parse.unquote(parsed.path)
+    ).name
+
+    if not filename:
+        filename = "DGMS_Document.pdf"
+
+    if not filename.lower().endswith(".pdf"):
+        filename += ".pdf"
+
+    file_path = upload_dir / filename
+
+    try:
+
+        # ----------------------------------------------------
+        # Download PDF
+        # ----------------------------------------------------
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "MineSafe/1.0"
+            }
+        )
+
+        with urllib.request.urlopen(
+            request,
+            timeout=30
+        ) as response:
+
+            content_type = response.headers.get(
+                "Content-Type",
+                ""
+            ).lower()
+
+            file_data = response.read()
+
+        # ----------------------------------------------------
+        # Basic PDF validation
+        # ----------------------------------------------------
+        if not file_data.startswith(b"%PDF"):
+            raise HTTPException(
+                status_code=400,
+                detail="The provided DGMS URL did not return a valid PDF."
+            )
+
+        # Prevent extremely large downloads
+        if len(file_data) > 25 * 1024 * 1024:
+            raise HTTPException(
+                status_code=400,
+                detail="PDF is too large. Maximum allowed size is 25 MB."
+            )
+
+        # ----------------------------------------------------
+        # Save temporarily
+        # ----------------------------------------------------
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_data)
+
+        # ----------------------------------------------------
+        # Existing MineSafe PDF pipeline
+        # ----------------------------------------------------
+        document_id = save_document(
+            str(file_path),
+            filename,
+            filename,
+            "DGMS Official"
+        )
+
+        with engine.begin() as connection:
+            connection.execute(
+                text("""
+                    UPDATE documents
+                    SET source_url = :source_url
+                    WHERE id = :document_id
+                """),
+                {
+                    "source_url": url,
+                    "document_id": document_id
+                }
+            )
+
+        return {
+            "message": "DGMS PDF imported successfully",
+            "filename": filename,
+            "document_id": document_id,
+            "source_url": url
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+
+        print("================================")
+        print("DGMS URL IMPORT ERROR")
+        print("ERROR:", repr(e))
+        print("================================")
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"DGMS PDF import failed: {str(e)}"
         )
 
     finally:

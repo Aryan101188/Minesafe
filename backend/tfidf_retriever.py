@@ -22,13 +22,17 @@ def normalize_query(query):
 
     query = query.lower()
 
-    replacements = {
+    replacement = {
         "electrical": "electric",
         "electrically": "electric",
         "electrics": "electric",
+
         "ventilated": "ventilation",
         "ventilating": "ventilation",
         "ventilator": "ventilation",
+
+        "speed": "velocity",
+
         "requirements": "requirement",
         "required": "requirement",
         "regulations": "regulation",
@@ -39,7 +43,7 @@ def normalize_query(query):
     words = query.split()
 
     return " ".join(
-        replacements.get(word, word)
+        replacement.get(word, word)
         for word in words
     )
 

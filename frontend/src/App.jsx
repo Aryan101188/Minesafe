@@ -19,6 +19,9 @@ function App() {
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
 
+  const [dgmsUrl, setDgmsUrl] = useState("");
+  const [importingUrl, setImportingUrl] = useState(false);
+
   const [stats, setStats] = useState({
     documents: 0,
     chunks: 0,
@@ -326,6 +329,73 @@ function App() {
 
     }
 
+  };
+    // =========================
+  // IMPORT DGMS PDF FROM URL
+  // =========================
+
+  const importDgmsPdf = async () => {
+    if (!dgmsUrl.trim()) {
+      setUploadMessage("Please enter an official DGMS PDF link.");
+      return;
+    }
+
+    setImportingUrl(true);
+    setUploadMessage("");
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/documents/import-url",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            url: dgmsUrl.trim()
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || data.message || "DGMS PDF import failed."
+        );
+      }
+
+      setUploadMessage(
+        `✓ ${data.filename || "DGMS PDF"} imported successfully.`
+      );
+
+      setDgmsUrl("");
+
+      const [documentsResponse, statsResponse] = await Promise.all([
+        fetch("http://127.0.0.1:8000/api/documents"),
+        fetch("http://127.0.0.1:8000/api/stats")
+      ]);
+
+      if (documentsResponse.ok) {
+        const documentsData = await documentsResponse.json();
+        setDocuments(
+          Array.isArray(documentsData) ? documentsData : []
+        );
+      }
+
+      if (statsResponse.ok) {
+        const statsData = await statsResponse.json();
+        setStats(statsData);
+      }
+
+    } catch (error) {
+      console.error("DGMS URL import error:", error);
+      setUploadMessage(
+        `Import failed: ${error.message}`
+      );
+    } finally {
+      setImportingUrl(false);
+    }
   };
 
 
@@ -1106,6 +1176,89 @@ const checkCompliance = () => {
 
                 )}
 
+              </div>
+              {/* =========================
+                  DGMS PDF LINK
+              ========================= */}
+
+              <div
+                style={{
+                  marginTop: "20px",
+                  paddingTop: "20px",
+                  borderTop: "1px solid #e2e8f0"
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    color: "#334155",
+                    marginBottom: "8px"
+                  }}
+                >
+                  Already found the official DGMS PDF?
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    flexWrap: "wrap"
+                  }}
+                >
+                  <input
+                    type="url"
+                    value={dgmsUrl}
+                    onChange={(event) => {
+                      setDgmsUrl(event.target.value);
+                      setUploadMessage("");
+                    }}
+                    placeholder="Paste official DGMS PDF link"
+                    style={{
+                      flex: 1,
+                      minWidth: "280px",
+                      padding: "11px 13px",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "9px",
+                      fontSize: "13px",
+                      outline: "none"
+                    }}
+                  />
+
+                  <button
+                    onClick={importDgmsPdf}
+                    disabled={!dgmsUrl.trim() || importingUrl}
+                    style={{
+                      padding: "11px 20px",
+                      borderRadius: "9px",
+                      border: "none",
+                      fontWeight: 700,
+                      cursor:
+                        dgmsUrl.trim() && !importingUrl
+                          ? "pointer"
+                          : "not-allowed",
+                      opacity:
+                        dgmsUrl.trim() && !importingUrl
+                          ? 1
+                          : 0.55
+                    }}
+                  >
+                    {importingUrl
+                      ? "Importing..."
+                      : "Import DGMS PDF"}
+                  </button>
+                </div>
+
+                <p
+                  style={{
+                    marginTop: "8px",
+                    marginBottom: 0,
+                    fontSize: "12px",
+                    color: "#64748b"
+                  }}
+                >
+                  Only official DGMS (dgms.gov.in) PDF links are accepted.
+                </p>
               </div>
 
 
