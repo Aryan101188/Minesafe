@@ -7,14 +7,14 @@ import {
 import "./App.css";
 
 
-const API_BASE = "http://127.0.0.1:8000";
-
+const API_BASE = "https://minesafe-backend-0j6w.onrender.com";
 
 function App() {
 
   const [activePage, setActivePage] = useState("dashboard");
 
   const [documents, setDocuments] = useState([]);
+  const [trashDocuments, setTrashDocuments] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
@@ -136,6 +136,99 @@ function App() {
 
   }, []);
 
+
+  // =========================
+  // RECYCLE BIN
+  // =========================
+
+  const loadTrash = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/trash`);
+
+      if (!response.ok) {
+        throw new Error("Could not load recycle bin.");
+      }
+
+      const data = await response.json();
+      setTrashDocuments(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error loading recycle bin:", error);
+      setTrashDocuments([]);
+    }
+  };
+
+  const moveToBin = async (documentId) => {
+    if (!window.confirm("Move this document to the Recycle Bin?")) return;
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/documents/${documentId}`,
+        { method: "DELETE" }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not move document to bin.");
+      }
+
+      await loadDocumentsAndStats();
+      await loadTrash();
+    } catch (error) {
+      console.error("Move to bin error:", error);
+      alert(`Could not move document to bin: ${error.message}`);
+    }
+  };
+
+  const restoreFromBin = async (documentId) => {
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/trash/${documentId}/restore`,
+        { method: "POST" }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not restore document.");
+      }
+
+      await loadTrash();
+      await loadDocumentsAndStats();
+    } catch (error) {
+      console.error("Restore error:", error);
+      alert(`Could not restore document: ${error.message}`);
+    }
+  };
+
+  const permanentlyDelete = async (documentId) => {
+    if (!window.confirm("Permanently delete this document? This cannot be undone.")) return;
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/trash/${documentId}`,
+        { method: "DELETE" }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Could not permanently delete document."
+        );
+      }
+
+      await loadTrash();
+      await loadDocumentsAndStats();
+    } catch (error) {
+      console.error("Permanent delete error:", error);
+      alert(`Could not permanently delete document: ${error.message}`);
+    }
+  };
+
+  useEffect(() => {
+    loadTrash();
+  }, []);
 
   // =========================
   // DOCUMENT UPLOAD
@@ -366,7 +459,9 @@ function App() {
           },
 
           body: JSON.stringify({
-            document_id: 1,
+            document_id: documents.find(
+              doc => doc.filename === "mine_ventilation_rules.pdf"
+            )?.id,
             actual_airflow: Number(actualAirflow)
           })
 
@@ -515,6 +610,16 @@ function App() {
         >
           Documents
         </button>
+        <button
+  className={
+    activePage === "bin"
+      ? "nav-button active"
+      : "nav-button"
+  }
+  onClick={() => setActivePage("bin")}
+>
+  Bin
+</button>
 
 
         <button
@@ -1227,6 +1332,22 @@ function App() {
 
                       </div>
 
+                      <button
+                        onClick={() => moveToBin(document.id)}
+                        style={{
+                          marginTop: "14px",
+                          padding: "9px 14px",
+                          borderRadius: "8px",
+                          border: "1px solid #fecaca",
+                          background: "#fff1f2",
+                          color: "#b91c1c",
+                          fontWeight: 700,
+                          cursor: "pointer"
+                        }}
+                      >
+                        Move to Bin
+                      </button>
+
                     </div>
 
                   ))}
@@ -1241,6 +1362,191 @@ function App() {
 
         )}
 
+
+        {/* =========================
+            RECYCLE BIN
+        ========================= */}
+
+        {activePage === "bin" && (
+
+          <section>
+
+            <div className="page-header">
+              <div>
+                <span className="page-label">
+                  DOCUMENT RECOVERY
+                </span>
+
+                <h2>Recycle Bin</h2>
+
+                <p>
+                  Restore documents or permanently remove them from MineSafe.
+                </p>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: "24px",
+                background: "#ffffff",
+                border: "1px solid #dbe3ec",
+                borderRadius: "16px",
+                padding: "24px",
+                boxShadow: "0 6px 20px rgba(15, 23, 42, 0.06)"
+              }}
+            >
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "12px",
+                  flexWrap: "wrap",
+                  marginBottom: "18px"
+                }}
+              >
+                <div>
+                  <span className="result-label">
+                    DELETED DOCUMENTS
+                  </span>
+
+                  <h3 style={{ margin: "7px 0 0" }}>
+                    {trashDocuments.length} document
+                    {trashDocuments.length === 1 ? "" : "s"} in Bin
+                  </h3>
+                </div>
+
+                <button
+                  onClick={loadTrash}
+                  style={{
+                    padding: "9px 14px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    background: "#f8fafc",
+                    fontWeight: 700,
+                    cursor: "pointer"
+                  }}
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {trashDocuments.length === 0 ? (
+
+                <div className="empty-search-state">
+                  <div className="empty-icon">🗑️</div>
+
+                  <h3>Recycle Bin is empty</h3>
+
+                  <p>
+                    Documents moved from the library will appear here.
+                  </p>
+                </div>
+
+              ) : (
+
+                <div className="document-grid">
+
+                  {trashDocuments.map((document) => (
+
+                    <div
+                      className="document-card"
+                      key={document.id}
+                      style={{
+                        background: "#ffffff",
+                        border: "1px solid #dbe3ec",
+                        borderRadius: "14px",
+                        padding: "20px",
+                        boxShadow: "0 4px 14px rgba(15, 23, 42, 0.04)"
+                      }}
+                    >
+
+                      <span
+                        style={{
+                          display: "inline-block",
+                          fontSize: "10px",
+                          fontWeight: 800,
+                          letterSpacing: "0.08em",
+                          color: "#b45309",
+                          marginBottom: "7px"
+                        }}
+                      >
+                        IN RECYCLE BIN
+                      </span>
+
+                      <h3 style={{ margin: 0 }}>
+                        {document.title || document.filename}
+                      </h3>
+
+                      <p style={{ margin: "12px 0 6px", fontSize: "13px" }}>
+                        <strong>File:</strong> {document.filename}
+                      </p>
+
+                      {document.deleted_at && (
+                        <p
+                          style={{
+                            margin: "0 0 14px",
+                            color: "#64748b",
+                            fontSize: "12px"
+                          }}
+                        >
+                          Deleted:{" "}
+                          {new Date(document.deleted_at).toLocaleString()}
+                        </p>
+                      )}
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "10px",
+                          flexWrap: "wrap",
+                          marginTop: "14px"
+                        }}
+                      >
+                        <button
+                          onClick={() => restoreFromBin(document.id)}
+                          style={{
+                            padding: "9px 14px",
+                            borderRadius: "8px",
+                            border: "none",
+                            background: "#0f766e",
+                            color: "#ffffff",
+                            fontWeight: 700,
+                            cursor: "pointer"
+                          }}
+                        >
+                          Restore
+                        </button>
+
+                        <button
+                          onClick={() => permanentlyDelete(document.id)}
+                          style={{
+                            padding: "9px 14px",
+                            borderRadius: "8px",
+                            border: "1px solid #fecaca",
+                            background: "#fff1f2",
+                            color: "#b91c1c",
+                            fontWeight: 700,
+                            cursor: "pointer"
+                          }}
+                        >
+                          Delete Forever
+                        </button>
+                      </div>
+
+                    </div>
+
+                  ))}
+
+                </div>
+              )}
+
+            </div>
+
+          </section>
+
+        )}
 
         {/* =========================
             SEARCH
