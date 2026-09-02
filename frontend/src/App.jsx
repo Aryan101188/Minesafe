@@ -445,7 +445,7 @@ const checkCompliance = () => {
     return;
   }
 
-  fetch(`${API_BASE_URL}/api/compliance/check`, {
+  fetch(`${API_BASE}/api/compliance/check`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
